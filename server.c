@@ -23,6 +23,7 @@ int main(){
     hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = AI_PASSIVE;
 
+    //getaddrinfo devuelve una estructura addrinfo que se usara en bind
     int status = getaddrinfo(NULL, "8000", &hints, &res);
 
     if (status != 0){
@@ -38,6 +39,13 @@ int main(){
 
     if (sd<0){
         errexit ("No se pudo crear el socket: %s\n", strerror(errno));
+    }
+
+    //Bind recibe la información de getaddrinfo y la asocia al socket creado
+    int bd = bind(sd, res->ai_addr, res-> ai_addrlen);
+
+    if(bd<0){
+        errexit("No se pudo asociar el socket: %s\n", strerror(errno));
     }
 
     freeaddrinfo(res);
