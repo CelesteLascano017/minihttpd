@@ -15,6 +15,11 @@ int main(){
 
     struct addrinfo hints;
     struct addrinfo *res = NULL;
+    
+    //Almacenar la direción del cliente que se conecta al servidor
+    struct sockaddr_in client_addr;
+    memset(&client_addr, 0, sizeof(client_addr));
+    socklen_t client_addr_len = sizeof(client_addr);
 
     memset(&hints, 0, sizeof(hints));
 
@@ -53,6 +58,15 @@ int main(){
 
     if(ls<0){
         errexit("No se pudo poner el socket en modo escucha: %s\n", strerror(errno));
+    }
+
+    //Accept acepta solicitudes de conexión, pero se bloquea hasta que un cliente se conecte
+    int client_sd = accept(sd, (struct sockaddr *)&client_addr, &client_addr_len);
+    
+    if(client_sd<0){
+        errexit("No se pudo aceptar la conexión: %s\n", strerror(errno));
+    }else{
+        printf("Cliente conecatado: %d\n", client_sd);
     }
 
     freeaddrinfo(res);
