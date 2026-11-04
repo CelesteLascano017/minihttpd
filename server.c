@@ -48,5 +48,12 @@ int main(){
         errexit("No se pudo asociar el socket: %s\n", strerror(errno));
     }
 
+    //Listen pone el socket en modo escucha
+    int ls = listen(sd, 10);
+
+    if(ls<0){
+        errexit("No se pudo poner el socket en modo escucha: %s\n", strerror(errno));
+    }
+
     freeaddrinfo(res);
 }
