@@ -9,6 +9,8 @@
 
 #include <errno.h>
 
+char buffer [1025];
+
 int main(){
 
     int errexit (const char *format, ...);
@@ -67,6 +69,17 @@ int main(){
         errexit("No se pudo aceptar la conexión: %s\n", strerror(errno));
     }else{
         printf("Cliente conecatado: %d\n", client_sd);
+    }
+
+    ssize_t rd = read(client_sd, buffer, sizeof(buffer));
+
+    if(rd<0){
+        errexit("No se pudo leer del socket: %s\n", strerror(errno));
+    }else if (rd == 0){
+        printf("El cliente cerró la conexión\n");
+    }else if(rd>0){
+        buffer[rd] = '\0';
+        printf("Se recibieron %zd bytes: %s\n", rd, buffer);
     }
 
     freeaddrinfo(res);
