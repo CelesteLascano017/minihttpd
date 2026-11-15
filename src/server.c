@@ -62,25 +62,26 @@ int main(){
         errexit("No se pudo poner el socket en modo escucha: %s\n", strerror(errno));
     }
 
-    //Accept acepta solicitudes de conexión, pero se bloquea hasta que un cliente se conecte
-    int client_sd = accept(sd, (struct sockaddr *)&client_addr, &client_addr_len);
-    
-    if(client_sd<0){
-        errexit("No se pudo aceptar la conexión: %s\n", strerror(errno));
-    }else{
-        printf("Cliente conecatado: %d\n", client_sd);
+    while(1){
+        //Accept acepta solicitudes de conexión, pero se bloquea hasta que un cliente se conecte
+        int client_sd = accept(sd, (struct sockaddr *)&client_addr, &client_addr_len);
+        if(client_sd<0){
+            errexit("No se pudo aceptar la conexión: %s\n", strerror(errno));
+        }else{
+            printf("Cliente conecatado: %d\n", client_sd);
+        }
+        ssize_t rd = read(client_sd, buffer, sizeof(buffer));
+        if(rd<0){
+            errexit("No se pudo leer del socket: %s\n", strerror(errno));
+        }else if (rd == 0){
+            printf("El cliente cerró la conexión\n");
+        }else if(rd>0){
+            buffer[rd] = '\0';
+            printf("Se recibieron %zd bytes: %s\n", rd, buffer);
+        }
+        close(client_sd);
+        return 0;
     }
-
-    ssize_t rd = read(client_sd, buffer, sizeof(buffer));
-
-    if(rd<0){
-        errexit("No se pudo leer del socket: %s\n", strerror(errno));
-    }else if (rd == 0){
-        printf("El cliente cerró la conexión\n");
-    }else if(rd>0){
-        buffer[rd] = '\0';
-        printf("Se recibieron %zd bytes: %s\n", rd, buffer);
-    }
-
     freeaddrinfo(res);
+
 }
