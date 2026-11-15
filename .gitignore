@@ -1,4 +1,6 @@
 # Compiled executables
+minihttpd
+server
 src/server
 src/minihttpd
 
