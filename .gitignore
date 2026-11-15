@@ -1,0 +1,9 @@
+# Compiled executables
+src/server
+src/minihttpd
+
+# Object files
+*.o
+
+# Debug files
+*.out
