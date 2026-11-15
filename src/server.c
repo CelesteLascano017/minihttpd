@@ -6,13 +6,13 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
-
 #include <errno.h>
+#include "errexit.h"
+#include "server.h"
 
 
 int iniciar_servidor(const char *port){
 
-    int errexit (const char *format, ...);
 
     struct addrinfo hints;
     struct addrinfo *res = NULL;
@@ -29,6 +29,7 @@ int iniciar_servidor(const char *port){
 
     if (status != 0){
         fprintf(stderr, "%s\n", gai_strerror(status));
+        return -1;
     } 
 
     printf("Family: %d\n", res->ai_family);
@@ -62,7 +63,7 @@ int iniciar_servidor(const char *port){
 
 }
 
-int accept_cliente(int sd){
+int acceptar_cliente(int sd){
 
     //Almacenar la direción del cliente que se conecta al servidor
     struct sockaddr_in client_addr;
@@ -91,4 +92,13 @@ ssize_t leer_solicitud_cliente(int client_sd, char *buffer, size_t buffer_size){
     return solicitud;
 }
 
+ssize_t enviar_respuesta_cliente(int client_sd, const char *response, size_t size){
+    ssize_t respuesta = write(client_sd, response, size);
+    if(respuesta<0){
+        errexit("No se pudo escribir en el socket: %s\n", strerror(errno));
+    }else if(respuesta>0){
+        printf("Se enviaron %zd bytes\n", respuesta);
+    }
+    return respuesta;
+}
 
