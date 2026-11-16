@@ -1,8 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "http.h"
 
+
+static int copiar_valor(char *destino, size_t destino_size, const char *origen, size_t length){
+
+    if (length == 0 || length >= destino_size){
+        return -1;
+    }
+
+    memcpy(destino, origen, length);
+    destino[length] = '\0';
+    return 0;
+}
 
 int parsing_http_request(const char *request, ssize_t request_length, http_request_t *parsed_request){
 
@@ -16,7 +28,7 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
 
     memset(parsed_request, 0, sizeof(*parsed_request));
 
-   
+ 
     ssize_t line_end = -1;
 
     for (ssize_t i = 0; i < request_length - 1; i++){
@@ -30,7 +42,11 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
         return 400;
     }
 
-   
+    if (line_end > MAX_REQUEST_LINE){
+        return 400;
+    }
+
+
     ssize_t first_space = -1;
 
     for (ssize_t i = 0; i < line_end; i++){
@@ -58,38 +74,158 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
         return 400;
     }
 
-  
     size_t method_length  = first_space;
     size_t uri_length     = second_space - first_space - 1;
     size_t version_length = line_end - second_space - 1;
 
 
-    if (method_length == 0 || method_length >= sizeof(parsed_request->metodo)){
+    if (uri_length > MAX_URI){
         return 400;
     }
 
-    if (uri_length == 0 || uri_length >= sizeof(parsed_request->uri)){
+    if (copiar_valor(parsed_request->metodo, sizeof(parsed_request->metodo), request, method_length) != 0){
         return 400;
     }
 
-    if (version_length == 0 || version_length >= sizeof(parsed_request->version)){
+    if (copiar_valor(parsed_request->uri, sizeof(parsed_request->uri), request + first_space + 1, uri_length) != 0){
         return 400;
     }
 
-    
-    memcpy(parsed_request->metodo, request, method_length);
-    parsed_request->metodo[method_length] = '\0';
+    if (copiar_valor(parsed_request->version, sizeof(parsed_request->version), request + second_space + 1, version_length) != 0){
+        return 400;
+    }
 
-    memcpy(parsed_request->uri, request + first_space + 1, uri_length);
-    parsed_request->uri[uri_length] = '\0';
-
-    memcpy(parsed_request->version, request + second_space + 1, version_length);
-    parsed_request->version[version_length] = '\0';
+    if (parsed_request->uri[0] != '/'){
+        return 400;
+    }
 
     if (strcmp(parsed_request->metodo, "GET") != 0) {
         return 405;
     }
+
     if (strcmp(parsed_request->version, "HTTP/1.1") != 0) {
+        return 400;
+    }
+
+
+    ssize_t pos = line_end + 2;    
+    int header_count = 0;
+    int headers_terminados = 0;
+
+    while (pos < request_length){
+
+        ssize_t end = -1;
+
+        for (ssize_t i = pos; i < request_length - 1; i++){
+            if (request[i] == '\r' && request[i+1] == '\n'){
+                end = i;
+                break;
+            }
+        }
+
+        if (end == -1){
+            return 400;
+        }
+
+        ssize_t header_length = end - pos;
+
+   
+        if (header_length == 0){
+            headers_terminados = 1;
+            break;
+        }
+
+
+        if (header_length > MAX_HEADER_LINE){
+            return 400;
+        }
+
+        header_count++;
+        if (header_count > MAX_HEADERS){
+            return 400;
+        }
+
+
+        ssize_t colon = -1;
+
+        for (ssize_t i = pos; i < end; i++){
+            if (request[i] == ':'){
+                colon = i;
+                break;
+            }
+        }
+
+
+        if (colon == -1 || colon == pos){
+            return 400;
+        }
+
+
+        for (ssize_t i = pos; i < colon; i++){
+            if (request[i] == ' ' || request[i] == '\t'){
+                return 400;
+            }
+        }
+
+        const char *name = request + pos;
+        size_t name_length = colon - pos;
+
+
+        ssize_t value_start = colon + 1;
+        while (value_start < end && (request[value_start] == ' ' || request[value_start] == '\t')){
+            value_start++;
+        }
+
+
+        ssize_t value_end = end;
+        while (value_end > value_start && (request[value_end - 1] == ' ' || request[value_end - 1] == '\t')){
+            value_end--;
+        }
+
+        const char *value = request + value_start;
+        size_t value_length = value_end - value_start;
+
+   
+        if (name_length == 4 && strncasecmp(name, "Host", 4) == 0){
+
+            if (parsed_request->host[0] != '\0'){
+                return 400;     
+            }
+            if (copiar_valor(parsed_request->host, sizeof(parsed_request->host), value, value_length) != 0){
+                return 400;
+            }
+        }
+        else if (name_length == 10 && strncasecmp(name, "Connection", 10) == 0){
+
+            if (parsed_request->connection[0] != '\0'){
+                return 400;     
+            }
+            if (copiar_valor(parsed_request->connection, sizeof(parsed_request->connection), value, value_length) != 0){
+                return 400;
+            }
+            if (strcasecmp(parsed_request->connection, "close") != 0 &&
+                strcasecmp(parsed_request->connection, "keep-alive") != 0){
+                return 400;
+            }
+        }
+        else if (name_length == 10 && strncasecmp(name, "User-Agent", 10) == 0){
+
+            if (copiar_valor(parsed_request->user_agent, sizeof(parsed_request->user_agent), value, value_length) != 0){
+                return 400;
+            }
+        }
+
+
+        pos = end + 2;
+    }
+
+
+    if (headers_terminados == 0){
+        return 400;
+    }
+
+
+    if (parsed_request->host[0] == '\0'){
         return 400;
     }
 
