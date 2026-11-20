@@ -3,12 +3,12 @@
 
 #include <string.h>
 #include <sys/types.h>
+#include <stddef.h>
 
-// Limites independientes
-#define MAX_REQUEST_LINE 300   // largo maximo de "GET /uri HTTP/1.1"
-#define MAX_URI          256   // largo maximo de la URI
-#define MAX_HEADER_LINE  256   // largo maximo de cada linea de encabezado
-#define MAX_HEADERS      16    // cantidad maxima de encabezados
+#define MAX_REQUEST_LINE 300   // largo de "GET /uri HTTP/1.1"
+#define MAX_URI          256   // largo de la URI
+#define MAX_HEADER_LINE  256   // largo de cada linea de encabezado
+#define MAX_HEADERS      16    // cantidad de encabezados
 
 typedef struct {
     char metodo[8];                 //para almacenar GET
@@ -20,5 +20,7 @@ typedef struct {
 } http_request_t;
 
 int parsing_http_request(const char *request, ssize_t request_length, http_request_t *parsed_request);
+
+int preparar_respuesta(const char*request, size_t request_size, http_request_t *parsed_request, const char **respuesta, size_t *respuesta_size);
 
 #endif

@@ -4,6 +4,31 @@
 #include <strings.h>
 #include "http.h"
 
+static const char *response_ok =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: text/plain\r\n"
+    "Content-Length: 8\r\n"
+    "Connection: close\r\n\r\n"
+    "Holaaaaa";
+
+static const char *response_400 =
+    "HTTP/1.1 400 Bad Request\r\n"
+    "Content-Length: 12\r\n"
+    "Connection: close\r\n\r\n"
+    "Bad Request!";
+
+static const char *response_405 =
+    "HTTP/1.1 405 Method Not Allowed\r\n"
+    "Allow: GET\r\n"
+    "Content-Length: 18\r\n"
+    "Connection: close\r\n\r\n"
+    "Method Not Allowed";
+
+static const char *response_500 =
+    "HTTP/1.1 500 Internal Server Error\r\n"
+    "Content-Length: 21\r\n"
+    "Connection: close\r\n\r\n"
+    "Internal Server Error";
 
 static int copiar_valor(char *destino, size_t destino_size, const char *origen, size_t length){
 
@@ -27,7 +52,6 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
     }
 
     memset(parsed_request, 0, sizeof(*parsed_request));
-
  
     ssize_t line_end = -1;
 
@@ -228,6 +252,31 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
     if (parsed_request->host[0] == '\0'){
         return 400;
     }
+
+    return 0;
+}
+
+
+int preparar_respuesta(const char *request, size_t request_size, http_request_t *parsed_request, const char **respuesta, size_t *respuesta_size){
+    if (request == NULL || parsed_request == NULL ||
+        respuesta == NULL || respuesta_size == NULL)
+        return -1;
+
+    *respuesta = NULL;
+    *respuesta_size = 0;
+
+    int resultado = parsing_http_request(request, (ssize_t)request_size, parsed_request);
+
+    if (resultado == 0)
+        *respuesta = response_ok;
+    else if (resultado == 400)
+        *respuesta = response_400;
+    else if (resultado == 405)
+        *respuesta = response_405;
+    else
+        *respuesta = response_500;
+
+    *respuesta_size = strlen(*respuesta);
 
     return 0;
 }
