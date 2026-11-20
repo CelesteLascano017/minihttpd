@@ -41,14 +41,19 @@ int iniciar_servidor(const char *port){
     //int sd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (sd<0){
-        errexit ("No se pudo crear el socket: %s\n", strerror(errno));
+        perror("socket");
+        freeaddrinfo(res);
+        return -1;
     }
 
     //Bind recibe la información de getaddrinfo y la asocia al socket creado
     int bd = bind(sd, res->ai_addr, res-> ai_addrlen);
 
     if(bd<0){
-        errexit("No se pudo asociar el socket: %s\n", strerror(errno));
+        perror("bind");
+        close(sd);
+        freeaddrinfo(res);
+        return -1;
     }
 
     freeaddrinfo(res);
@@ -57,7 +62,9 @@ int iniciar_servidor(const char *port){
     int ls = listen(sd, 10);
 
     if(ls<0){
-        errexit("No se pudo poner el socket en modo escucha: %s\n", strerror(errno));
+        perror("listen");
+        close(sd);
+        return -1;
     }
 
     /*Preparamos el socket para que sea no bloqueante antes de que se use en main.c*/
@@ -78,7 +85,8 @@ int acceptar_cliente(int sd){
 
     socklen_t client_addr_len = sizeof(client_addr);
 
-    //Accept acepta solicitudes de conexión, pero se bloquea hasta que un cliente se conecte
+    // accept() obtiene una conexión pendiente.
+    // Si no hay conexiones disponibles, devuelve -1 con EAGAIN o EWOULDBLOCK
     int cliente_sd = accept(sd, (struct sockaddr *)&client_addr, &client_addr_len);
 
     if(cliente_sd==-1){
