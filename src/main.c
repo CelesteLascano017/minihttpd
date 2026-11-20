@@ -8,7 +8,6 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <sys/epoll.h>
-#include "errexit.h"
 #include "server.h"
 #include "http.h"
 
