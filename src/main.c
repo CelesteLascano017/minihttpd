@@ -7,68 +7,229 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <sys/epoll.h>
 #include "errexit.h"
 #include "server.h"
 #include "http.h"
 
+#define MAX_EVENTS 64
+#define BUFFER_SIZE 1024
+
+//Estructura que representa el estado de una conexión
+typedef struct{
+    int fd;
+    char request[BUFFER_SIZE];
+    size_t request_size;
+    http_request_t parsed_request;
+    const char *response;
+    size_t response_size;
+    size_t response_sent;
+
+}client_state_t;
+
+static void cerrar_cliente(int epdf, client_state_t *client){
+    epoll_ctl(epdf, EPOLL_CTL_DEL, client->fd, NULL);
+    close(client->fd);
+    free(client);
+}
+
 int main(){
+
     int sd = iniciar_servidor("8080");
+
     if(sd<0){
         fprintf(stderr, "Error al iniciar el servidor\n");
         return EXIT_FAILURE;
     }
 
-    while(1){
-        int client_sd = acceptar_cliente(sd);
-        
-        char buffer[1024];
+    int epdf = epoll_create1(0);
 
-        ssize_t request = leer_solicitud_cliente(client_sd, buffer, sizeof(buffer));
-
-        if (request <=0){
-            close(client_sd);
-            continue;
-        }
-
-        http_request_t parsed_request;
-
-        int result = parsing_http_request(buffer, request, &parsed_request);
-
-        char *response_ok =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain\r\n"
-        "Content-Length: 8\r\n"
-        "Connection: close\r\n\r\n"
-        "Holaaaaa";
-
-        char *response_400 =
-        "HTTP/1.1 400 Bad Request\r\n"
-        "Content-Length: 12\r\n"
-        "Connection: close\r\n\r\n"
-        "Bad Request!";
-
-        char *response_405 =
-        "HTTP/1.1 405 Method Not Allowed\r\n"
-        "Allow: GET\r\n"
-        "Content-Length: 18\r\n"
-        "Connection: close\r\n\r\n"
-        "Method Not Allowed";
-
-        if (result == 0) {
-        enviar_respuesta_cliente(
-            client_sd, response_ok, strlen(response_ok)
-        );
-        }
-        else if (result == 400) {
-            enviar_respuesta_cliente(client_sd, response_400, strlen(response_400));
-        }
-        else if (result == 405) {
-            enviar_respuesta_cliente(client_sd, response_405, strlen(response_405));
-        }
-        else {
-            fprintf(stderr, "Internal parser error\n");
-        }
-
-        close(client_sd);
+    if (epdf == -1){
+        perror("epoll_create1");
+        close(sd);
+        return EXIT_FAILURE;
     }
+
+    struct epoll_event event;
+    struct epoll_event events[MAX_EVENTS];
+
+    event.events = EPOLLIN;
+    event.data.ptr = NULL;
+
+    if(epoll_ctl(epdf, EPOLL_CTL_ADD,sd, &event)==-1){
+        perror("epoll_ctl ADD server");
+        close(epdf);
+        close(sd);
+        return EXIT_FAILURE;
+    }
+
+    while(1){
+
+        int ready = epoll_wait(epdf, events, MAX_EVENTS, -1);
+
+        if(ready==-1){
+            if(errno == EINTR){
+                continue;
+            }
+            perror("epoll_wait");
+            break;
+        }
+
+        for (int i = 0; i < ready; i++ ){
+
+            /*Evento para el socket de escucha, sd*/
+            if(events[i].data.ptr == NULL){
+
+                while(1){
+
+                    int client_sd = acceptar_cliente(sd);
+
+                    if(client_sd == -1){
+                        break;
+                    }
+
+                    client_state_t *client = calloc(1, sizeof(client_state_t));
+
+                    if(client == NULL){
+                        close(client_sd);
+                        continue;
+                    }
+
+                    client->fd = client_sd;
+
+                    struct epoll_event client_event;
+                    client_event.events = EPOLLIN | EPOLLRDHUP;
+                    client_event.data.ptr = client;
+
+                    if(epoll_ctl(epdf, EPOLL_CTL_ADD, client_sd, &client_event)==-1){
+                        perror("epoll_ctl ADD client");
+                        close(client_sd);
+                        free(client);
+                    }
+                }
+
+                continue;
+            }
+
+            /*Evento de un cliente*/
+            client_state_t *client = events[i].data.ptr;
+
+            if(events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP )){
+                cerrar_cliente(epdf, client);
+                continue;
+            }
+
+            /*Evento cuando el cliente tiene datos disponibles*/
+            if(events[i].events & EPOLLIN){
+
+                int request_complete = 0;
+
+                while(1){
+                    
+                    ssize_t received = leer_solicitud_cliente(client->fd, client->request + client->request_size, BUFFER_SIZE - client->request_size - 1);
+                    
+                    if(received > 0){
+
+                        client->request_size += (size_t)received;
+                        client->request[client->request_size] = '\0';
+
+                        if(strstr(client->request, "\r\n\r\n") != NULL){
+                            request_complete = 1;
+                            break;
+                        }
+
+                        if(client->request_size >= BUFFER_SIZE - 1){
+                            request_complete = 1;
+                            break;
+                        }
+
+                        continue;
+
+                    }
+
+                    if(received==0){
+                        cerrar_cliente(epdf, client);
+                        client = NULL;
+                        break;
+                    }
+
+                    if (errno == EINTR){
+                        continue;
+                    }
+
+                    if(errno== EAGAIN || errno == EWOULDBLOCK){
+                        break;
+                    }
+
+                    perror("read");
+                    cerrar_cliente(epdf, client);
+                    client = NULL;
+                    break;
+                }
+
+                if (client== NULL){
+                    continue;
+                }
+
+                if(request_complete){
+                    if(client->response == NULL){
+                        if(preparar_respuesta(client->request, client->request_size,&client->parsed_request,&client->response,&client->response_size) == -1){
+                            cerrar_cliente(epdf, client);
+                            continue;
+                        }
+                    }
+
+                    client->response_sent = 0;
+
+                    struct epoll_event write_event;
+                    write_event.events = EPOLLOUT | EPOLLRDHUP;
+                    write_event.data.ptr = client;
+
+                    if(epoll_ctl(epdf, EPOLL_CTL_MOD, client->fd, &write_event)==-1){
+                        perror("epoll_ctl MOD");
+                        cerrar_cliente(epdf, client);
+                    }
+                }
+            }
+
+            /*El cliente esta listo para escribir*/
+
+            else if(events[i].events & EPOLLOUT){
+                while(client->response_sent < client->response_size){
+
+                    ssize_t sent = enviar_respuesta_cliente(
+                        client->fd,
+                        client->response + client->response_sent,
+                        client->response_size - client->response_sent
+                    );
+
+                    if(sent > 0){
+                        client->response_sent += (size_t)sent;
+                        continue;
+                    }
+
+                    if(sent == -1 && errno == EINTR){
+                        continue;
+                    }
+
+                    if(sent==-1 && (errno == EAGAIN || errno == EWOULDBLOCK)){
+                        break;
+                    }
+
+                    cerrar_cliente(epdf, client);
+                    client = NULL;
+                    break;
+                }
+
+                if(client != NULL && client->response_sent == client->response_size){
+                    cerrar_cliente(epdf, client);
+                }
+            }
+        }
+    }
+    
+    close(epdf);
+    close(sd);
+
+    return EXIT_SUCCESS;
 }
