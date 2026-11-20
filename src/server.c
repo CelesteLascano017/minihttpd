@@ -9,6 +9,7 @@
 #include <errno.h>
 #include "errexit.h"
 #include "server.h"
+#include <fcntl.h>
 
 
 int iniciar_servidor(const char *port){
@@ -59,6 +60,12 @@ int iniciar_servidor(const char *port){
         errexit("No se pudo poner el socket en modo escucha: %s\n", strerror(errno));
     }
 
+    /*Preparamos el socket para que sea no bloqueante antes de que se use en main.c*/
+    if(configurar_no_bloqueantes(sd)==-1){
+        close(sd);
+        return -1;
+    }
+
     return sd;
 
 }
@@ -68,37 +75,58 @@ int acceptar_cliente(int sd){
     //Almacenar la direción del cliente que se conecta al servidor
     struct sockaddr_in client_addr;
     memset(&client_addr, 0, sizeof(client_addr));
+
     socklen_t client_addr_len = sizeof(client_addr);
 
     //Accept acepta solicitudes de conexión, pero se bloquea hasta que un cliente se conecte
     int cliente_sd = accept(sd, (struct sockaddr *)&client_addr, &client_addr_len);
-    if(cliente_sd<0){
-        errexit("No se pudo aceptar la conexión: %s\n", strerror(errno));
-    }else{
-        printf("Cliente conecatado: %d\n", cliente_sd);
+
+    if(cliente_sd==-1){
+        if(errno==EAGAIN || errno == EWOULDBLOCK){
+            return -1;
+        }
+        perror("accept");
+        return -1;
     }
+
+    if(configurar_no_bloqueantes(cliente_sd)==-1){
+        close(cliente_sd);
+        return -1;
+    }
+
+    printf("Cliente conectado: %d\n", cliente_sd);
+
     return cliente_sd;
 }
 
 ssize_t leer_solicitud_cliente(int client_sd, char *buffer, size_t buffer_size){
+
     ssize_t solicitud = read(client_sd, buffer, buffer_size);
-    if(solicitud<0){
-        errexit("No se pudo leer del socket: %s\n", strerror(errno));
-    }else if (solicitud == 0){
-        printf("El cliente cerró la conexión\n");
-    }else if(solicitud>0){
-        printf("Se recibieron %zd bytes: %s\n", solicitud, buffer);
-    }
+    
     return solicitud;
 }
 
 ssize_t enviar_respuesta_cliente(int client_sd, const char *response, size_t size){
-    ssize_t respuesta = write(client_sd, response, size);
-    if(respuesta<0){
-        errexit("No se pudo escribir en el socket: %s\n", strerror(errno));
-    }else if(respuesta>0){
-        printf("Se enviaron %zd bytes\n", respuesta);
-    }
+
+    ssize_t respuesta = send(client_sd, response, size, MSG_NOSIGNAL);
+   
     return respuesta;
 }
 
+int configurar_no_bloqueantes(int sd){
+    //Obtener los flags actuales del descriptor
+    int flags = fcntl(sd, F_GETFL, 0);
+
+    if (flags == -1) {
+        perror("fcntl F_GETFL");
+        return -1;
+    }
+
+    //Conservo los flags existentes y activo O_NONBLOCK
+    if (fcntl(sd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl F_SETFL");
+        return -1;
+    }
+
+    return 0;
+}

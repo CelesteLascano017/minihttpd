@@ -8,4 +8,7 @@ int acceptar_cliente(int sd);
 ssize_t leer_solicitud_cliente(int client_sd, char *buffer, size_t size);
 ssize_t enviar_respuesta_cliente(int client_sd, const char *response, size_t size);
 
+//Condicion necesaria para que el bucle con epoll de eventos pueda atender varios clientes sin quedarse detenido esperando a uno
+int configurar_no_bloqueantes(int sd);
+
 #endif
