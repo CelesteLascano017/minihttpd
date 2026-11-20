@@ -8,8 +8,11 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <sys/epoll.h>
+#include <limits.h>
 #include "server.h"
 #include "http.h"
+#include "files.h"
+#include "mime.h"
 
 #define MAX_EVENTS 64
 #define BUFFER_SIZE 1024
@@ -20,21 +23,32 @@ typedef struct{
     char request[BUFFER_SIZE];
     size_t request_size;
     http_request_t parsed_request;
-    const char *response;
+    // Para construir dinánimcamente las cabeceras
+    const response[512];
     size_t response_size;
     size_t response_sent;
+    int file_fd;
+    size_t file_size;
+    size_t file_sent;
 
 }client_state_t;
 
 static void cerrar_cliente(int epdf, client_state_t *client){
     epoll_ctl(epdf, EPOLL_CTL_DEL, client->fd, NULL);
     close(client->fd);
+
+    if(client->file_fd != -1){
+        close(client-> file_fd);
+    }
+
     free(client);
 }
 
 int main(){
 
     int sd = iniciar_servidor("8080");
+
+    char ruta_archivo[PATH_MAX];
 
     if(sd<0){
         fprintf(stderr, "Error al iniciar el servidor\n");
@@ -95,6 +109,7 @@ int main(){
                     }
 
                     client->fd = client_sd;
+                    client->file_fd = -1;
 
                     struct epoll_event client_event;
                     client_event.events = EPOLLIN | EPOLLRDHUP;
