@@ -7,7 +7,6 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <errno.h>
-#include "errexit.h"
 #include "server.h"
 #include <fcntl.h>
 
