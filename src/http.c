@@ -231,11 +231,13 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
 }
 
 
-int preparar_respuesta(const char *request, size_t request_size, http_request_t *parsed_request, const char **respuesta, size_t *respuesta_size){
-    if (request == NULL || parsed_request == NULL ||respuesta == NULL || respuesta_size == NULL){
+int preparar_respuesta(int codigo_estado,const char *tipo_mime, size_t contenido_size, char *respuesta, size_t respuesta_size, size_t *respuesta_generada){
+    if (respuesta == NULL || respuesta_generada == NULL || respuesta_size == 0){
         return -1;
 
     }
+
+    *respuesta_generada = 0;
 
     const char *mensaje;
 
@@ -258,15 +260,15 @@ int preparar_respuesta(const char *request, size_t request_size, http_request_t 
         case 500:
             mensaje = "Internal Server Error";
             break;
-        deafult:
+        default:
             return -1;
     }
 
     if(tipo_mime == NULL){
-        tipo_mime = "application/octet-stream"
+        tipo_mime = "application/octet-stream";
     }
 
-    int resultado = parsing_http_request(
+    int resultado = snprintf(
         respuesta, 
         respuesta_size,
         "HTTP/1.1 %d %s\r\n"

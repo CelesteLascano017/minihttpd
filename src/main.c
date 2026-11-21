@@ -16,6 +16,7 @@
 
 #define MAX_EVENTS 64
 #define BUFFER_SIZE 1024
+#define FILE_BUFFER_SIZE 4096
 
 //Estructura que representa el estado de una conexión
 typedef struct{
@@ -30,6 +31,9 @@ typedef struct{
     int file_fd;
     size_t file_size;
     size_t file_sent;
+    char file_buffer[FILE_BUFFER_SIZE];
+    size_t file_buffer_size;
+    size_t file_buffer_sent;
 
 }client_state_t;
 
@@ -128,7 +132,7 @@ int main(){
             /*Evento de un cliente*/
             client_state_t *client = events[i].data.ptr;
 
-            if(events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP )){
+            if(events[i].events & (EPOLLERR | EPOLLHUP )){
                 cerrar_cliente(epdf, client);
                 continue;
             }
@@ -274,8 +278,71 @@ int main(){
                     break;
                 }
 
-                if(client != NULL && client->response_sent == client->response_size){
+                if(client == NULL){
+                    continue;
+                }
+
+                if(client->response_sent < client->response_size){
+                    continue;
+                }
+
+                if(client->file_fd == -1){
                     cerrar_cliente(epdf, client);
+                    client = NULL;
+                    continue;
+                }
+
+                while(client->file_sent < client->file_size){
+                    if(client->file_buffer_sent == client->file_buffer_size){
+                        size_t restante = client->file_size - client->file_sent;
+                        size_t cantidad = restante < FILE_BUFFER_SIZE
+                                        ? restante
+                                        : FILE_BUFFER_SIZE;
+                        ssize_t leidos = read(client->file_fd, client->file_buffer, cantidad);
+
+                        if(leidos == -1 && errno == EINTR){
+                            continue;
+                        }
+
+                        if(leidos <= 0){
+                            cerrar_cliente(epdf, client);
+                            client = NULL;
+                            break;
+                        }
+
+                        client->file_buffer_size = (size_t)leidos;
+                        client->file_buffer_sent = 0;
+
+                    }
+
+                    ssize_t enviados = enviar_respuesta_cliente(
+                        client->fd,
+                        client->file_buffer + client->file_buffer_sent,
+                        client->file_buffer_size - client->file_buffer_sent
+                    );
+
+                    if(enviados > 0){
+                        client->file_buffer_sent += (size_t)enviados;
+                        client->file_sent += (size_t)enviados;
+                        continue;
+                    }
+
+                    if(enviados == -1 && errno == EINTR){
+                        continue;
+                    }
+
+                    if(enviados == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)){
+                        break;
+                    }
+
+                    cerrar_cliente(epdf, client);
+                    client = NULL;
+                    break;
+                }
+
+                if(client != NULL && client->file_sent == client->file_size){
+                    cerrar_cliente(epdf, client);
+                    client = NULL;
                 }
             }
         }
