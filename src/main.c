@@ -24,7 +24,7 @@ typedef struct{
     size_t request_size;
     http_request_t parsed_request;
     // Para construir dinánimcamente las cabeceras
-    const response[512];
+    char response[512];
     size_t response_size;
     size_t response_sent;
     int file_fd;
@@ -186,14 +186,54 @@ int main(){
                 }
 
                 if(request_complete){
-                    if(client->response == NULL){
-                        if(preparar_respuesta(client->request, client->request_size,&client->parsed_request,&client->response,&client->response_size) == -1){
-                            cerrar_cliente(epdf, client);
-                            continue;
+
+                    int codigo_estado = parsing_http_request(client->request, (ssize_t)client->request_size,&client->parsed_request);
+
+                    const char *tipo_mime = "text/plain";
+                    size_t contenido_size = 0;
+
+                    if (codigo_estado == 0) {
+
+                        if (resolver_ruta( client->parsed_request.uri, ruta_archivo, sizeof(ruta_archivo)) == -1) {
+                            codigo_estado = 404;
+                        }
+                        else {
+                            int resultado_archivo = solicitar_archivo(&client->file_fd, ruta_archivo, &client->file_size);
+
+                            if (resultado_archivo == 1) {
+                                codigo_estado = 200;
+                                contenido_size = client->file_size;
+                                tipo_mime = obtener_tipo_mime(ruta_archivo);
+                            }
+                            else if (resultado_archivo == 0) {
+                                codigo_estado = 404;
+                            }
+                            else if (resultado_archivo == -1) {
+                                codigo_estado = 403;
+                            }
+                            else {
+                                codigo_estado = 500;
+                            }
                         }
                     }
+                    else if (codigo_estado == -1) {
+                        codigo_estado = 500;
+                    }
 
+                    if(preparar_respuesta(
+                        codigo_estado,
+                        tipo_mime, 
+                        contenido_size, 
+                        client->response, 
+                        sizeof(client->response), 
+                        &client->response_size 
+                    ) == -1){
+                        cerrar_cliente(epdf, client);
+                        continue;
+                    }
+                    
                     client->response_sent = 0;
+                    client->file_sent =0;
 
                     struct epoll_event write_event;
                     write_event.events = EPOLLOUT | EPOLLRDHUP;
@@ -204,10 +244,9 @@ int main(){
                         cerrar_cliente(epdf, client);
                     }
                 }
+            
             }
-
             /*El cliente esta listo para escribir*/
-
             else if(events[i].events & EPOLLOUT){
                 while(client->response_sent < client->response_size){
 

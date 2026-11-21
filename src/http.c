@@ -4,32 +4,6 @@
 #include <strings.h>
 #include "http.h"
 
-static const char *response_ok =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/plain\r\n"
-    "Content-Length: 8\r\n"
-    "Connection: close\r\n\r\n"
-    "Holaaaaa";
-
-static const char *response_400 =
-    "HTTP/1.1 400 Bad Request\r\n"
-    "Content-Length: 12\r\n"
-    "Connection: close\r\n\r\n"
-    "Bad Request!";
-
-static const char *response_405 =
-    "HTTP/1.1 405 Method Not Allowed\r\n"
-    "Allow: GET\r\n"
-    "Content-Length: 18\r\n"
-    "Connection: close\r\n\r\n"
-    "Method Not Allowed";
-
-static const char *response_500 =
-    "HTTP/1.1 500 Internal Server Error\r\n"
-    "Content-Length: 21\r\n"
-    "Connection: close\r\n\r\n"
-    "Internal Server Error";
-
 static int copiar_valor(char *destino, size_t destino_size, const char *origen, size_t length){
 
     if (length == 0 || length >= destino_size){
@@ -258,25 +232,60 @@ int parsing_http_request(const char *request, ssize_t request_length, http_reque
 
 
 int preparar_respuesta(const char *request, size_t request_size, http_request_t *parsed_request, const char **respuesta, size_t *respuesta_size){
-    if (request == NULL || parsed_request == NULL ||
-        respuesta == NULL || respuesta_size == NULL)
+    if (request == NULL || parsed_request == NULL ||respuesta == NULL || respuesta_size == NULL){
         return -1;
 
-    *respuesta = NULL;
-    *respuesta_size = 0;
+    }
 
-    int resultado = parsing_http_request(request, (ssize_t)request_size, parsed_request);
+    const char *mensaje;
 
-    if (resultado == 0)
-        *respuesta = response_ok;
-    else if (resultado == 400)
-        *respuesta = response_400;
-    else if (resultado == 405)
-        *respuesta = response_405;
-    else
-        *respuesta = response_500;
+    switch (codigo_estado){
+        case 200:
+            mensaje = "Ok";
+            break;
+        case 400:
+            mensaje = "Bad Request";
+            break;
+        case 403:
+            mensaje = "Forbidden";
+            break;
+        case 404:
+            mensaje = "Not Found";
+            break;
+        case 405:
+            mensaje = "Method Not Allowed";
+            break;
+        case 500:
+            mensaje = "Internal Server Error";
+            break;
+        deafult:
+            return -1;
+    }
 
-    *respuesta_size = strlen(*respuesta);
+    if(tipo_mime == NULL){
+        tipo_mime = "application/octet-stream"
+    }
+
+    int resultado = parsing_http_request(
+        respuesta, 
+        respuesta_size,
+        "HTTP/1.1 %d %s\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zu\r\n"
+        "Connection: close\r\n"
+        "\r\n",
+        codigo_estado,
+        mensaje,
+        tipo_mime,
+        contenido_size    
+    );
+
+    if (resultado < 0 || (size_t)resultado >= respuesta_size){
+        *respuesta_generada = 0;
+        return -1;
+    }
+       
+    *respuesta_generada = (size_t)resultado;
 
     return 0;
 }

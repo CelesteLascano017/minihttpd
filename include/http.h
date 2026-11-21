@@ -21,6 +21,6 @@ typedef struct {
 
 int parsing_http_request(const char *request, ssize_t request_length, http_request_t *parsed_request);
 
-int preparar_respuesta(const char*request, size_t request_size, http_request_t *parsed_request, const char **respuesta, size_t *respuesta_size);
+int preparar_respuesta(int codigo_estado, const char*tipo_mime, size_t contenido_size, const char*respuesta, size_t request_size,  size_t *respuesta_generada);
 
 #endif
