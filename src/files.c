@@ -18,6 +18,7 @@ int resolver_ruta(const char *uri, char *ruta, size_t ruta_size){
     size_t ruta_publica_len;
     size_t ruta_canonica_len;
     int total_ruta_publica;
+    const char *recurso;
 
     if (uri == NULL || ruta == NULL || ruta_size == 0)
         return -1;
@@ -25,13 +26,18 @@ int resolver_ruta(const char *uri, char *ruta, size_t ruta_size){
     if (uri[0] != '/')
         return -1;
 
+    if (uri[1] == '\0'){
+        recurso = "index.html";
+    } else {
+        recurso = uri + 1;
+    }
+
     ruta_publica = realpath("www", NULL);
 
     if (ruta_publica == NULL)
         return -1;
 
-    total_ruta_publica = snprintf(candidato, sizeof(candidato),
-                                  "%s/%s", ruta_publica, uri + 1);
+    total_ruta_publica = snprintf(candidato, sizeof(candidato),"%s/%s", ruta_publica, recurso);
 
     if (total_ruta_publica < 0 ||
         (size_t)total_ruta_publica >= sizeof(candidato)) {
